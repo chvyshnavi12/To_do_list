@@ -10,6 +10,7 @@ import java.util.List;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -313,53 +314,43 @@ public class UserController {
         model.addAttribute("pdfs", pdfs);
         return "pdf";
     }
-
     @PostMapping("/pdf/upload")
-    public String uploadPdf(@RequestParam("file") MultipartFile[] files, HttpSession session) throws IOException {
+    public String uploadPdf(@RequestParam("file") MultipartFile file,
+                            HttpSession session) throws IOException {
         User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
-        Path uploadPath = Paths.get(uploadDir);
-        File uploadFolder = uploadPath.toFile();
-        if (!uploadFolder.exists() && !uploadFolder.mkdirs()) {
-            throw new IOException("Could not create upload folder: " + uploadDir);
-        }
+        PdfFile pdf = new PdfFile();
+        pdf.setName(file.getOriginalFilename());
+        pdf.setUploadedAt(LocalDateTime.now());
+        pdf.setData(file.getBytes());  // store content in DB
+        pdf.setUser(currentUser);
 
-        for (MultipartFile file : files) {
-            if (!"application/pdf".equals(file.getContentType())) continue;
+        pdfRepo.save(pdf);
 
-            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-            Path destPath = uploadPath.resolve(fileName);
-            file.transferTo(destPath.toFile());
-
-            PdfFile pdf = new PdfFile();
-            pdf.setUser(currentUser);
-            pdf.setName(file.getOriginalFilename());
-            pdf.setFilePath(destPath.toString());
-            pdf.setUploadedAt(LocalDateTime.now());
-            pdfRepo.save(pdf);
-        }
-        return "redirect:/pdf";
+        return "redirect:/pdf";  // adjust to your page
     }
 
     @GetMapping("/pdf/view/{id}")
-    public ResponseEntity<Resource> viewPdf(@PathVariable Long id, HttpSession session) throws IOException {
+    public ResponseEntity<Resource> viewPdf(@PathVariable Long id, HttpSession session) {
         User currentUser = getCurrentUser(session);
         if (currentUser == null) return ResponseEntity.status(401).build();
 
-        PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
-        if (!pdf.getUser().getId().equals(currentUser.getId())) return ResponseEntity.status(403).build();
+        PdfFile pdf = pdfRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("PDF not found"));
 
-        File file = new File(pdf.getFilePath());
-        if (!file.exists()) throw new RuntimeException("File not found");
+        if (!pdf.getUser().getId().equals(currentUser.getId()))
+            return ResponseEntity.status(403).build();
 
-        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
+        ByteArrayResource resource = new ByteArrayResource(pdf.getData());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.getName() + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(resource);
     }
+
+
 
     @GetMapping("/pdf/download/{id}")
     public ResponseEntity<FileSystemResource> downloadPdf(@PathVariable Long id, HttpSession session) {

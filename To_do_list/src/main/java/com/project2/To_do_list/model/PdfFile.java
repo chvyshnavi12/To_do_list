@@ -3,7 +3,6 @@ package com.project2.To_do_list.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -17,9 +16,14 @@ public class PdfFile {
 
     private String name;
 
-    private String filePath; // server path
+    // REMOVE filePath usage, OR keep it only for debugging
+    private String filePath;
 
     private LocalDateTime uploadedAt;
+
+    @Lob
+    @Column(columnDefinition = "LONGBLOB")
+    private byte[] data;   // <-- Store PDF file content here
 
     // Link PDF to User
     @ManyToOne(fetch = FetchType.LAZY)
