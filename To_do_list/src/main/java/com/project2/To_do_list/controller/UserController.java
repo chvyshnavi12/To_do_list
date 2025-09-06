@@ -305,66 +305,41 @@ public class UserController {
     }
 
     // ---------------- PDF ----------------
-    @GetMapping("/pdf")
-    public String showPdfLibrary(HttpSession session, Model model) {
-        User currentUser = getCurrentUser(session);
-        if (currentUser == null) return "redirect:/auth";
-
-        List<PdfFile> pdfs = pdfRepo.findByUser(currentUser);
-        model.addAttribute("pdfs", pdfs);
-        return "pdf";
-    }
-    @PostMapping("/pdf/upload")
-    public String uploadPdf(@RequestParam("file") MultipartFile file, HttpSession session) throws IOException {
-        User currentUser = getCurrentUser(session);
-        if (currentUser == null) return "redirect:/auth";
-
-        PdfFile pdf = new PdfFile();
-        pdf.setName(file.getOriginalFilename());
-        pdf.setUploadedAt(LocalDateTime.now());
-        pdf.setData(file.getBytes()); // Store file content in DB
-        pdf.setUser(currentUser);
-
-        pdfRepo.save(pdf);
-        return "redirect:/pdf";
-    }
     @GetMapping("/pdf/view/{id}")
-    public ResponseEntity<Resource> viewPdf(@PathVariable Long id, HttpSession session) {
+    public ResponseEntity<?> viewPdf(@PathVariable Long id, HttpSession session) {
         User currentUser = getCurrentUser(session);
-        if (currentUser == null) return ResponseEntity.status(401).build();
+        if (currentUser == null) return ResponseEntity.status(401).body("You must be logged in");
 
-        PdfFile pdf = pdfRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("PDF not found"));
-
+        PdfFile pdf = pdfRepo.findById(id).orElse(null);
+        if (pdf == null) return ResponseEntity.status(404).body("PDF not found");
         if (!pdf.getUser().getId().equals(currentUser.getId()))
-            return ResponseEntity.status(403).build();
+            return ResponseEntity.status(403).body("Not authorized");
 
-        if (pdf.getData() == null)
-            return ResponseEntity.status(404).build();  // prevent ByteArrayResource null error
-
-        ByteArrayResource resource = new ByteArrayResource(pdf.getData());
+        if (pdf.getData() == null) return ResponseEntity.status(404).body("PDF data is empty");
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.getName() + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(pdf.getData().length)
-                .body(resource);
+                .body(new ByteArrayResource(pdf.getData()));
     }
 
-
     @GetMapping("/pdf/download/{id}")
-    public ResponseEntity<FileSystemResource> downloadPdf(@PathVariable Long id, HttpSession session) {
+    public ResponseEntity<?> downloadPdf(@PathVariable Long id, HttpSession session) {
         User currentUser = getCurrentUser(session);
-        if (currentUser == null) return ResponseEntity.status(401).build();
+        if (currentUser == null) return ResponseEntity.status(401).body("You must be logged in");
 
-        PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
-        if (!pdf.getUser().getId().equals(currentUser.getId())) return ResponseEntity.status(403).build();
+        PdfFile pdf = pdfRepo.findById(id).orElse(null);
+        if (pdf == null) return ResponseEntity.status(404).body("PDF not found");
+        if (!pdf.getUser().getId().equals(currentUser.getId()))
+            return ResponseEntity.status(403).body("Not authorized");
+        if (pdf.getData() == null) return ResponseEntity.status(404).body("PDF data is empty");
 
-        FileSystemResource resource = new FileSystemResource(pdf.getFilePath());
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + pdf.getName() + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
-                .body(resource);
+                .contentLength(pdf.getData().length)
+                .body(new ByteArrayResource(pdf.getData()));
     }
 
     @PostMapping("/pdf/delete/{id}")
@@ -372,14 +347,16 @@ public class UserController {
         User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
-        PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
-        if (pdf.getUser().getId().equals(currentUser.getId())) {
-            File file = new File(pdf.getFilePath());
-            if (file.exists()) file.delete();
-            pdfRepo.delete(pdf);
-        }
-        return "redirect:/pdf";
+        PdfFile pdf = pdfRepo.findById(id).orElse(null);
+        if (pdf == null) return "redirect:/pdf?error=notfound";
+
+        if (!pdf.getUser().getId().equals(currentUser.getId()))
+            return "redirect:/pdf?error=notauthorized";
+
+        pdfRepo.delete(pdf);
+        return "redirect:/pdf?success=deleted";
     }
+
 
     // ---------------- HELPER ----------------
     private User getCurrentUser(HttpSession session) {
