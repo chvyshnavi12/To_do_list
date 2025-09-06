@@ -3,10 +3,10 @@ package com.project2.To_do_list.controller;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -15,6 +15,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -37,26 +39,30 @@ public class UserController {
     @Value("${pdf.upload-dir:C:/Users/chvys/Documents/java/springboot/To_do_list/uploads}")
     private String uploadDir;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     // ---------------- LOGIN & SIGNUP ----------------
     @GetMapping({"/", "/auth"})
     public String showLoginPage(Model model) {
         model.addAttribute("loginRequest", new LoginRequest());
-        return "loginpage"; // Thymeleaf login template
+        return "loginpage";
     }
+/*
+    @PostMapping("/auth")
+    public String loginUser(@ModelAttribute("loginRequest") LoginRequest loginRequest,
+                            Model model,
+                            HttpSession session) {
+        User user = userRepo.findByEmail(loginRequest.getEmail()).orElse(null);
 
-    @PostMapping("/auth/login")
-    public String loginUser(@ModelAttribute LoginRequest loginRequest, Model model) {
-        User user = userRepo.findByEmailAndPassword(
-                loginRequest.getEmail(),
-                loginRequest.getPassword());
-
-        if (user != null) {
-            return "redirect:/home"; // Spring Security will handle authentication
-        } else {
-            model.addAttribute("error", "Invalid username or password");
+        if (user == null || !passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
+            model.addAttribute("error", "Invalid email or password");
             return "loginpage";
         }
-    }
+
+        session.setAttribute("currentUser", user);
+        return "redirect:/home";
+    }*/
 
     @GetMapping("/signup")
     public String getSignupPage(Model model) {
@@ -66,32 +72,29 @@ public class UserController {
 
     @PostMapping("/signup")
     public String registerUser(@ModelAttribute User user) {
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         userRepo.save(user);
-        return "redirect:/auth";
+        return "redirect:/auth?registered=true";
     }
 
-    // ---------------- HOME ----------------
     @GetMapping("/home")
-    public String getHomepage(Principal principal, Model model) {
-        if (principal == null) return "redirect:/auth";
-
-        String email = principal.getName();
-        User currentUser = userRepo.findByEmail(email)
-                .orElseGet(() -> {
-                    User u = new User();
-                    u.setEmail(email);
-                    userRepo.save(u);
-                    return u;
-                });
-
-        model.addAttribute("currentUser", currentUser);
-        return "home";
+    public String getHomepage(HttpSession session, Model model,
+                              Authentication authentication) {
+        if (authentication != null && authentication.isAuthenticated()) {
+            String email = authentication.getName();
+            User currentUser = userRepo.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            session.setAttribute("currentUser", currentUser);
+            model.addAttribute("currentUser", currentUser);
+            return "home";
+        }
+        return "redirect:/auth";
     }
 
     // ---------------- HABIT TRACKER ----------------
     @GetMapping("/habits")
-    public String showHabits(Model model, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String showHabits(Model model, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         List<Habit> habits = habitRepo.findByUser(currentUser);
@@ -102,8 +105,8 @@ public class UserController {
     }
 
     @PostMapping("/habits")
-    public String addHabit(@ModelAttribute("newHabit") Habit newHabit, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String addHabit(@ModelAttribute("newHabit") Habit newHabit, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         newHabit.setUser(currentUser);
@@ -113,8 +116,8 @@ public class UserController {
     }
 
     @GetMapping("/calendar")
-    public String showCalendar(Model model, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String showCalendar(Model model, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         List<Habit> habits = habitRepo.findByUser(currentUser);
@@ -125,8 +128,8 @@ public class UserController {
     }
 
     @PostMapping("/habits/increment/{id}")
-    public String incrementHabit(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String incrementHabit(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         Habit habit = habitRepo.findById(id)
@@ -140,8 +143,8 @@ public class UserController {
     }
 
     @PostMapping("/habits/reset/{id}")
-    public String resetHabit(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String resetHabit(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         Habit habit = habitRepo.findById(id)
@@ -155,8 +158,8 @@ public class UserController {
     }
 
     @PostMapping("/habits/delete/{id}")
-    public String deleteHabit(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String deleteHabit(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         Habit habit = habitRepo.findById(id)
@@ -170,15 +173,14 @@ public class UserController {
 
     // ---------------- 147 RULE TRACKER ----------------
     @GetMapping("/147ruletracker")
-    public String showRuleTracker(Model model, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String showRuleTracker(Model model, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         List<Concept> concepts = conceptService.getUserConcepts(currentUser);
 
         for (Concept concept : concepts) {
-            int completed = (int) concept.getRevisions()
-                    .stream().filter(Revision::isCompleted).count();
+            int completed = (int) concept.getRevisions().stream().filter(Revision::isCompleted).count();
             int total = concept.getRevisions().size();
             concept.setProgress(total > 0 ? completed * 100 / total : 0);
         }
@@ -195,8 +197,8 @@ public class UserController {
     }
 
     @PostMapping("/147ruletracker/add")
-    public String addConcept(@RequestParam String name, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String addConcept(@RequestParam String name, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         conceptService.addConcept(name, currentUser);
@@ -206,8 +208,8 @@ public class UserController {
     @PostMapping("/147ruletracker/toggle/{conceptId}/{revisionIndex}")
     public String toggleRevision(@PathVariable Long conceptId,
                                  @PathVariable int revisionIndex,
-                                 Principal principal) {
-        User currentUser = getCurrentUser(principal);
+                                 HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         conceptService.toggleRevision(conceptId, revisionIndex, currentUser);
@@ -215,8 +217,8 @@ public class UserController {
     }
 
     @PostMapping("/147ruletracker/delete/{conceptId}")
-    public String deleteConcept(@PathVariable Long conceptId, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String deleteConcept(@PathVariable Long conceptId, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         conceptService.deleteConcept(conceptId, currentUser);
@@ -225,15 +227,14 @@ public class UserController {
 
     // ---------------- NOTES ----------------
     @GetMapping("/notes")
-    public String showNotes(Principal principal, Model model) {
-        User currentUser = getCurrentUser(principal);
+    public String showNotes(HttpSession session, Model model) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         List<Note> notes = noteRepo.findByUser(currentUser);
         model.addAttribute("notes", notes);
 
-        List<String> folders = notes.stream()
-                .map(Note::getFolder).distinct().toList();
+        List<String> folders = notes.stream().map(Note::getFolder).distinct().toList();
         model.addAttribute("folders", folders);
 
         return "notes";
@@ -241,8 +242,8 @@ public class UserController {
 
     @PostMapping("/notes")
     @ResponseBody
-    public Note saveNote(@RequestBody Note note, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public Note saveNote(@RequestBody Note note, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return null;
 
         note.setUser(currentUser);
@@ -253,12 +254,11 @@ public class UserController {
 
     @PutMapping("/notes/{id}")
     @ResponseBody
-    public Note updateNote(@PathVariable Long id, @RequestBody Note noteData, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public Note updateNote(@PathVariable Long id, @RequestBody Note noteData, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return null;
 
-        Note note = noteRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Note not found"));
+        Note note = noteRepo.findById(id).orElseThrow(() -> new RuntimeException("Note not found"));
         if (!note.getUser().getId().equals(currentUser.getId())) return null;
 
         note.setTitle(noteData.getTitle());
@@ -271,12 +271,11 @@ public class UserController {
 
     @DeleteMapping("/notes/{id}")
     @ResponseBody
-    public String deleteNote(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String deleteNote(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "not-logged-in";
 
-        Note note = noteRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Note not found"));
+        Note note = noteRepo.findById(id).orElseThrow(() -> new RuntimeException("Note not found"));
         if (!note.getUser().getId().equals(currentUser.getId())) return "not-authorized";
 
         noteRepo.delete(note);
@@ -284,12 +283,11 @@ public class UserController {
     }
 
     @GetMapping("/notes/view/{id}")
-    public ResponseEntity<String> viewNote(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public ResponseEntity<String> viewNote(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return ResponseEntity.status(401).body("Not logged in");
 
-        Note note = noteRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Note not found"));
+        Note note = noteRepo.findById(id).orElseThrow(() -> new RuntimeException("Note not found"));
         if (!note.getUser().getId().equals(currentUser.getId()))
             return ResponseEntity.status(403).body("Not authorized");
 
@@ -306,8 +304,8 @@ public class UserController {
 
     // ---------------- PDF ----------------
     @GetMapping("/pdf")
-    public String showPdfLibrary(Principal principal, Model model) {
-        User currentUser = getCurrentUser(principal);
+    public String showPdfLibrary(HttpSession session, Model model) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         List<PdfFile> pdfs = pdfRepo.findByUser(currentUser);
@@ -316,8 +314,8 @@ public class UserController {
     }
 
     @PostMapping("/pdf/upload")
-    public String uploadPdf(@RequestParam("file") MultipartFile[] files, Principal principal) throws IOException {
-        User currentUser = getCurrentUser(principal);
+    public String uploadPdf(@RequestParam("file") MultipartFile[] files, HttpSession session) throws IOException {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         Path uploadPath = Paths.get(uploadDir);
@@ -344,8 +342,8 @@ public class UserController {
     }
 
     @GetMapping("/pdf/view/{id}")
-    public ResponseEntity<Resource> viewPdf(@PathVariable Long id, Principal principal) throws IOException {
-        User currentUser = getCurrentUser(principal);
+    public ResponseEntity<Resource> viewPdf(@PathVariable Long id, HttpSession session) throws IOException {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return ResponseEntity.status(401).build();
 
         PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
@@ -364,8 +362,8 @@ public class UserController {
     }
 
     @GetMapping("/pdf/download/{id}")
-    public ResponseEntity<FileSystemResource> downloadPdf(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public ResponseEntity<FileSystemResource> downloadPdf(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return ResponseEntity.status(401).build();
 
         PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
@@ -379,8 +377,8 @@ public class UserController {
     }
 
     @PostMapping("/pdf/delete/{id}")
-    public String deletePdf(@PathVariable Long id, Principal principal) {
-        User currentUser = getCurrentUser(principal);
+    public String deletePdf(@PathVariable Long id, HttpSession session) {
+        User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         PdfFile pdf = pdfRepo.findById(id).orElseThrow(() -> new RuntimeException("PDF not found"));
@@ -393,9 +391,7 @@ public class UserController {
     }
 
     // ---------------- HELPER ----------------
-    private User getCurrentUser(Principal principal) {
-        if (principal == null) return null;
-        return userRepo.findByEmail(principal.getName())
-                .orElse(null);
+    private User getCurrentUser(HttpSession session) {
+        return (User) session.getAttribute("currentUser");
     }
 }
