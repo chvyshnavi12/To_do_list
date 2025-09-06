@@ -23,7 +23,6 @@ public class SecurityConfig {
                         .permitAll()
                 )
                 .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/auth")                 // match your controller
                         .defaultSuccessUrl("/home", true)
                 )
                 .logout(logout -> logout
