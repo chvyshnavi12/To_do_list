@@ -3,6 +3,7 @@ package com.project2.To_do_list.controller;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -356,7 +357,6 @@ public class UserController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.getName() + "\"")
-                .contentLength(file.length())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(resource);
     }
