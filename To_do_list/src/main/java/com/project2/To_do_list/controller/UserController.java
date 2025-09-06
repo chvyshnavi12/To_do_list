@@ -315,22 +315,19 @@ public class UserController {
         return "pdf";
     }
     @PostMapping("/pdf/upload")
-    public String uploadPdf(@RequestParam("file") MultipartFile file,
-                            HttpSession session) throws IOException {
+    public String uploadPdf(@RequestParam("file") MultipartFile file, HttpSession session) throws IOException {
         User currentUser = getCurrentUser(session);
         if (currentUser == null) return "redirect:/auth";
 
         PdfFile pdf = new PdfFile();
         pdf.setName(file.getOriginalFilename());
         pdf.setUploadedAt(LocalDateTime.now());
-        pdf.setData(file.getBytes());  // store content in DB
+        pdf.setData(file.getBytes()); // Store file content in DB
         pdf.setUser(currentUser);
 
         pdfRepo.save(pdf);
-
-        return "redirect:/pdf";  // adjust to your page
+        return "redirect:/pdf";
     }
-
     @GetMapping("/pdf/view/{id}")
     public ResponseEntity<Resource> viewPdf(@PathVariable Long id, HttpSession session) {
         User currentUser = getCurrentUser(session);
@@ -342,14 +339,17 @@ public class UserController {
         if (!pdf.getUser().getId().equals(currentUser.getId()))
             return ResponseEntity.status(403).build();
 
+        if (pdf.getData() == null)
+            return ResponseEntity.status(404).build();  // prevent ByteArrayResource null error
+
         ByteArrayResource resource = new ByteArrayResource(pdf.getData());
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.getName() + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(pdf.getData().length)
                 .body(resource);
     }
-
 
 
     @GetMapping("/pdf/download/{id}")
