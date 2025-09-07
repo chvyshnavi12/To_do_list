@@ -305,6 +305,45 @@ public class UserController {
     }
 
     // ---------------- PDF ----------------
+    @GetMapping("/pdf")
+    public String pdfLibrary(Model model, HttpSession session) {
+        User currentUser = getCurrentUser(session);
+        if (currentUser == null) {
+            return "redirect:/auth"; // redirect to login
+        }
+
+        List<PdfFile> pdfs = pdfRepo.findByUser(currentUser);
+        model.addAttribute("pdfs", pdfs);
+
+        return "pdf"; // must match src/main/resources/templates/pdf.html
+    }
+
+    @PostMapping("/pdf/upload")
+    public String uploadPdf(@RequestParam("file") MultipartFile file, HttpSession session) {
+        User currentUser = getCurrentUser(session);
+        if (currentUser == null) {
+            return "redirect:/auth"; // Not logged in
+        }
+
+        if (file.isEmpty()) {
+            return "redirect:/pdf?error=empty";
+        }
+
+        try {
+            PdfFile pdf = new PdfFile();
+            pdf.setName(file.getOriginalFilename());
+            pdf.setData(file.getBytes());
+            pdf.setUploadedAt(java.time.LocalDateTime.now());
+            pdf.setUser(currentUser);
+
+            pdfRepo.save(pdf);
+
+            return "redirect:/pdf?success=uploaded";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "redirect:/pdf?error=uploadfail";
+        }
+    }
     @GetMapping("/pdf/view/{id}")
     public ResponseEntity<?> viewPdf(@PathVariable Long id, HttpSession session) {
         User currentUser = getCurrentUser(session);
@@ -319,10 +358,14 @@ public class UserController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.getName() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                .header(HttpHeaders.PRAGMA, "no-cache")
+                .header(HttpHeaders.EXPIRES, "0")
                 .contentType(MediaType.APPLICATION_PDF)
                 .contentLength(pdf.getData().length)
                 .body(new ByteArrayResource(pdf.getData()));
     }
+
 
     @GetMapping("/pdf/download/{id}")
     public ResponseEntity<?> downloadPdf(@PathVariable Long id, HttpSession session) {
