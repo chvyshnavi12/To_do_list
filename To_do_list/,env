@@ -1,4 +1,4 @@
-SPRING_DATASOURCE_URL=mysql://uaakjzistt11y6pt:fOq2NRIrPgkocBMpD7F0@bv2apib1xfgcvf5ipuss-mysql.services.clever-cloud.com:3306/bv2apib1xfgcvf5ipuss
+SPRING_DATASOURCE_URL=jdbc:mysql://uaakjzistt11y6pt:fOq2NRIrPgkocBMpD7F0@bv2apib1xfgcvf5ipuss-mysql.services.clever-cloud.com:3306/bv2apib1xfgcvf5ipuss
 SPRING_DATASOURCE_USERNAME=uaakjzistt11y6pt
 SPRING_DATASOURCE_PASSWORD=fOq2NRIrPgkocBMpD7F0
 SPRING_JPA_HIBERNATE_DDL_AUTO=update
